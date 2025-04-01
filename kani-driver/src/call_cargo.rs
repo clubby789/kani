@@ -191,6 +191,21 @@ crate-type = ["lib"]
             self.pkg_args.push("--no-assert-contracts".into());
         }
 
+        // https://github.com/model-checking/kani/issues/3967
+        // Ensure we get a usable package ID, even on older Rust versions
+        // Old format: <name> <version> (<url>)
+        // New format: <url>#<name>@<version>
+        fn package_id(package: &Package) -> String {
+            let regex_for_old =
+                regex::Regex::new(&format!(r"^{} {} \((.*)\)$", package.name, package.version))
+                    .unwrap();
+            let pkgid = package.id.to_string();
+            if let Some(caps) = regex_for_old.captures(&pkgid) {
+                format!("{}#{}@{}", &caps[1], package.name, package.version)
+            } else {
+                pkgid
+            }
+        }
         let mut found_target = false;
         let packages = self.packages_to_verify(&self.args, &metadata)?;
         let mut artifacts = vec![];
@@ -199,7 +214,7 @@ crate-type = ["lib"]
             for verification_target in package_targets(&self.args, package) {
                 let mut cmd = setup_cargo_command()?;
                 cmd.args(&cargo_args)
-                    .args(vec!["-p", &package.id.to_string()])
+                    .args(vec!["-p", &package_id(&package)])
                     .args(verification_target.to_args())
                     .args(&self.pkg_args)
                     .env("RUSTC", &self.kani_compiler)
